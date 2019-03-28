@@ -1,8 +1,10 @@
 """ Reinforcement Agent.
 """
-from random import random, randrange
+from collections import deque
+from random import random, randrange, randint, sample
 
-from torch import nn, optim, randn, argmax
+import torch
+from torch import nn, optim, randn, argmax, no_grad
 
 
 class Agent(nn.Module):
@@ -14,9 +16,11 @@ class Agent(nn.Module):
         hidden = (self.in_dim + self.out_dim) // 2
 
         self.model = nn.Sequential(
-            nn.Linear(self.in_dim, self.out_dim),
+            nn.Linear(self.in_dim, hidden),
+            nn.Linear(hidden, self.out_dim),
         )
 
+        self.memory = deque(maxlen=500)
         self.criterion = nn.SmoothL1Loss()
         self.optimizer = optim.Adam(self.model.parameters())
 
@@ -31,7 +35,7 @@ class Agent(nn.Module):
     def predict(self, context):
         if context is None:
             context = randn(1, self.in_dim)
-        return argmax(self.forward(context), dim=1).item()
+        return argmax(self.forward(context)).item()
 
     def fit(self, x, y):
         self.optimizer.zero_grad()
@@ -40,13 +44,27 @@ class Agent(nn.Module):
         self.optimizer.step()
         return loss.item()
 
+    def replay(self):
+        batch = 20
+        print(round(sum([self.fit(x, y) for x, y in sample(self.memory, batch)]) / batch, 3))
+
+    def pick(self, predictions):
+        return argmax(predictions) if random() > self.e else randrange(0, self.out_dim)
+
     def learn(self, bandit, epochs=100):
         for e in range(epochs):
-            context = randn(1, self.in_dim)
-            corrected = self.forward(context)
-            arm = argmax(corrected, dim=1) if random() > self.e else randrange(0, len(corrected))
-            corrected[0][arm] = float(bandit.pull(arm))
+            context = bandit.context
+            with no_grad():
+                predictions = self.forward(context)
+                arm = self.pick(predictions)
+                predictions[arm] = float(bandit.pull(arm))
 
-            self.fit(context, corrected)
+            # Remember.
+            self.memory.append((context, predictions))
 
+            # Replay.
+            if len(self.memory) > 25:
+                self.replay()
+
+            # Reduce epsilon.
             self.e = max(self.e * self.e_decay, self.e_min)

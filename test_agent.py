@@ -70,7 +70,7 @@ class TestAgent(TestCase):
     @given(st.lists(ARM, min_size=2, max_size=10, unique=True))
     def test_learn(self, arms):
         b = Bandit(arms)
-        a = Agent(in_dim=1, out_dim=len(b))
+        a = Agent(in_dim=len(b.context), out_dim=len(b))
         a.learn(b, epochs=100)
-        self.assertEqual(b.arms.index(max(b.arms)), a.predict(randn(1, 1)))
+        self.assertEqual(b.arms.index(max(b.arms)), a.predict(b.context))
         return
