@@ -1,6 +1,6 @@
 from unittest import TestCase
 
-from bandit import Bandit
+from multiarm_bandit import Bandit
 
 
 class TestBandit(TestCase):

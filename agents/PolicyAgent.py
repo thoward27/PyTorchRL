@@ -7,7 +7,7 @@ import torch
 from torch import nn, optim, randn, argmax, no_grad
 
 
-class Agent(nn.Module):
+class PolicyAgent(nn.Module):
     def __init__(self, in_dim, out_dim):
         super().__init__()
         self.in_dim = int(in_dim)
