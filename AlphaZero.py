@@ -5,10 +5,14 @@ thus there is no MCTS being performed.
 """
 from copy import deepcopy
 from functools import total_ordering
+from typing import List, Tuple
 
 import gym
+import numpy as np
+import torch
 from math import log, sqrt
-from torch import nn, optim
+from torch import nn, optim, Tensor, argmax
+from torch.nn import functional
 
 c_base = 1.0
 c_init = 1.0
@@ -16,32 +20,44 @@ c_init = 1.0
 
 @total_ordering
 class Node:
-    def __init__(self, state, action, prior, parent=None):
-        self.state = state
-        self.action = action
-        self.parent = parent
-        self.children = []
-        self.n = 0
-        self.w = 0
-        self.p = prior
+    def __init__(self, state: Tensor, action: int, prior: float, parent=None):
+        self.state: Tensor = state
+        self.action: int = action
+        self.parent: Node = parent
+        self.children: list = []
+        self.n: int = 0
+        self.w: float = 0
+        self.p: float = prior
 
-    def __repr__(self):
+    def __repr__(self) -> Tuple:
         return self.state, self.action
 
-    def __eq__(self, other):
+    def __eq__(self, other) -> bool:
         return self.q() + self.u() == other.q() + other.u()
 
-    def __gt__(self, other):
+    def __gt__(self, other) -> bool:
         return self.q() + self.u() > other.q() + other.u()
 
-    def q(self):
-        return self.w / self.n
+    def pr(self) -> float:
+        return self.q() + self.u()
 
-    def c(self):
-        return (log((1 + self.parent.n + c_base) / c_base)) + c_init
+    def q(self) -> float:
+        try:
+            return self.w / self.n
+        except ZeroDivisionError:
+            return 0
 
-    def u(self):
-        return (self.c() * self.p * sqrt(self.parent.n)) / (1 + self.n)
+    def c(self) -> float:
+        try:
+            return (log((1 + self.parent.n + c_base) / c_base)) + c_init
+        except AttributeError:
+            return c_init
+
+    def u(self) -> float:
+        try:
+            return (self.c() * self.p * sqrt(self.parent.n)) / (1 + self.n)
+        except AttributeError:
+            return c_init
 
 
 class AlphaZero(nn.Module):
@@ -51,7 +67,6 @@ class AlphaZero(nn.Module):
         # Body of the network.
         hidden = round(input_dim / output_dim)
         self.body = nn.Sequential(
-            nn.BatchNorm1d(input_dim),
             nn.Dropout(0.5),
             nn.Linear(input_dim, hidden),
             nn.LeakyReLU(),
@@ -63,42 +78,72 @@ class AlphaZero(nn.Module):
 
         self.optim = optim.Adam(self.parameters())
         self.loss_value = nn.MSELoss()
-        self.loss_policy = nn.CrossEntropyLoss()
-
-        self.tree = []
+        self.loss_policy = nn.BCELoss()
         return
 
-    def mcts(self, state, copy, simulations=10) -> list:
+    def mcts(self, state: Tensor, game: gym.Env, simulations: int = 10) -> Tuple[List[Node], float]:
+        # Start from current root
         policy, value = self.forward(state)
-        nodes = [Node(state, a, p) for a, p in enumerate(policy)]
-        for s in range(simulations):
-            node = max(nodes)  # The root of the tree
+        tree = [Node(state, a, p) for a, p in enumerate(policy)]
+        reward = [0]
 
-            # Rollout to leaf, guided by agent
-            state, rew, done, info = copy.step(node.action)
-            while not done:
+        # Traverse to leaf
+        for s in range(simulations):
+            simulation = deepcopy(game)
+            node = max(tree)
+            state, rew, done, info = simulation.step(node.action)
+            while not done and node.children:
+                node = max(node.children)
+                state, rew, done, info = simulation.step(node.action)
+
+            # Expand leaf
+            if not done:
                 policy, value = self.forward(state)
-                nodes = [Node(state, a, p, parent=node) for a, p in enumerate(policy)]
-                node = max(nodes)
+                node.children = [Node(state, a, p, parent=node) for a, p in enumerate(policy)]
+            # Win
+            elif simulation._elapsed_steps >= 200:
+                reward.append(1)
+            # Lose
+            else:
+                reward.append(-1)
 
             # Backward step
+            while node.parent:
+                node.n += 1
+                node.w += value
+                node = node.parent
 
         # return the new policy
-        return policy
+        return tree, sum(reward) / len(reward)
 
     def forward(self, x):
+        if isinstance(x, np.ndarray):
+            x = torch.from_numpy(x).float()
         h = self.body(x)
-        return self.actions(h), self.value(h)
+        return functional.softmax(self.actions(h)), functional.softmax(self.value(h))
 
-    def play(self, game: gym.Env, episodes=1000, steps=200):
+    def play(self, game: gym.Env, episodes=100, steps=200, render=False):
         for e in range(episodes):
             state = game.reset()
             for s in range(steps):
-                game.render()
+                if render:
+                    game.render()
 
-                policy = self.mcts(state, deepcopy(game), simulations=10)
-                action = self.forward(state)
-                state, rew, done, info = game.step(action)
+                if self.training:
+                    pi, z = self.mcts(state, deepcopy(game), simulations=10)
+                    policy, v = self.forward(state)
+                    state, rew, done, info = game.step(max(pi).action)
+
+                    # Compute Losses
+                    loss_value = self.loss_value(v, torch.tensor(z))
+                    loss_policy = self.loss_policy(policy, torch.tensor([n.pr() for n in pi]))
+                    loss = loss_value + loss_policy
+                    self.optim.zero_grad()
+                    loss.backward()
+                    self.optim.step()
+                else:
+                    pi, z = self.forward(state)
+                    state, rew, done, info = game.step(argmax(pi).item())
 
                 if done:
                     break
@@ -107,14 +152,17 @@ class AlphaZero(nn.Module):
         # Time up (winner in this case)
 
 
-if __name__ == "__main__":
+def train_cartpole(model):
     game = gym.make('CartPole-v1')
-    model = AlphaZero(game.observation_space.shape[0], game.action_space.n)
+    model = model(game.observation_space.shape[0], game.action_space.n)
 
     model.train()
     model.play(game)
 
     model.eval()
     model.play(game)
+    return
 
-    game.close()
+
+if __name__ == "__main__":
+    train_cartpole(AlphaZero)
