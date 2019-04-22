@@ -23,13 +23,15 @@ final exploration frame: 1,000,000
 replay start size: 50,000
 no-op max: 30
 """
+from collections import deque
+from functools import partial
+from random import sample, random, randrange
+
 import gym
 import mlflow
 import numpy as np
-from functools import partial
-from collections import deque, namedtuple
-from random import sample, random, randrange 
 from torch import nn, optim, from_numpy
+
 
 class DeepQ(nn.Module):
     def __init__(self, inputs: int, outputs: int):
@@ -40,7 +42,7 @@ class DeepQ(nn.Module):
         self.e_min = 0.1
         self.e_dec = 0.95
         self.random = partial(randrange, start=0, stop=outputs)
-        
+
         hidden = inputs // outputs
         self.model = nn.Sequential(
             nn.Dropout(0.5),
@@ -48,7 +50,7 @@ class DeepQ(nn.Module):
             nn.ReLU(),
             nn.Linear(hidden, outputs)
         )
-        
+
         self.optim = optim.RMSprop(self.parameters())
         self.criterion = nn.MSELoss()
         return
@@ -66,7 +68,7 @@ class DeepQ(nn.Module):
             loss = self.criterion(state, predicted)
             loss.backward()
             self.optim.step()
-            
+
             # Logging.
             mlflow.log_metric("Loss", loss.item())
 
@@ -89,7 +91,7 @@ class DeepQ(nn.Module):
             for s in range(steps):
                 if render:
                     game.render()
-                
+
                 action = self.predict(state)
                 if self.training:
                     next_state, reward, done, _ = game.step(action)
@@ -114,7 +116,6 @@ if __name__ == "__main__":
 
     model.train()
     model.play(game)
-    
+
     model.eval()
     model.play(game)
-    

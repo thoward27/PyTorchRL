@@ -1,7 +1,5 @@
 """ A PyTorch Implementation of AlphaZero
 
-Currently implementing only the raw network,
-thus there is no MCTS being performed.
 """
 from copy import deepcopy
 from functools import total_ordering
