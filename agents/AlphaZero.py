@@ -8,6 +8,7 @@ from functools import total_ordering
 from typing import List, Tuple
 
 import gym
+import mlflow
 import numpy as np
 import torch
 from math import log, sqrt
@@ -130,7 +131,7 @@ class AlphaZero(nn.Module):
                     game.render()
 
                 if self.training:
-                    pi, z = self.mcts(state, deepcopy(game), simulations=10)
+                    pi, z = self.mcts(state, deepcopy(game), simulations=100000)
                     policy, v = self.forward(state)
                     state, rew, done, info = game.step(max(pi).action)
 
@@ -141,15 +142,18 @@ class AlphaZero(nn.Module):
                     self.optim.zero_grad()
                     loss.backward()
                     self.optim.step()
+
+                    # Log things
+                    mlflow.log_metric("Value", loss_value.item())
+                    mlflow.log_metric("Policy", loss_policy.item())
                 else:
                     pi, z = self.forward(state)
                     state, rew, done, info = game.step(argmax(pi).item())
 
                 if done:
                     break
-            else:
-                pass
-        # Time up (winner in this case)
+            # Logging
+            mlflow.log_metric("Steps", s)
 
 
 def train_cartpole(model):
