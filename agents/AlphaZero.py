@@ -1,5 +1,18 @@
 """ A PyTorch Implementation of AlphaZero
 
+Original Abstract:
+The game of chess is the longest-studied domain in the history of artificial intelligence.
+The strongest programs are based on a combination of sophisticated search techniques,
+domain-specific adaptations, and handcrafted evaluation functions that have been refined
+by human experts over several decades. By contrast, the AlphaGo Zero program recently
+achieved superhuman performance in the game of Go by reinforcement learning from selfplay.
+In this paper, we generalize this approach into a single AlphaZero algorithm that can
+achieve superhuman performance in many challenging games. Starting from random play
+and given no domain knowledge except the game rules, AlphaZero convincingly defeated
+a world champion program in the games of chess and shogi (Japanese chess) as well as Go.
+
+Original paper:
+https://deepmind.com/blog/alphazero-shedding-new-light-grand-games-chess-shogi-and-go/
 """
 from copy import deepcopy
 from functools import total_ordering
