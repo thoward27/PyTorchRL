@@ -1,9 +1,8 @@
 """ Reinforcement Agent.
 """
 from collections import deque
-from random import random, randrange, randint, sample
+from random import random, randrange, sample
 
-import torch
 from torch import nn, optim, randn, argmax, no_grad
 
 

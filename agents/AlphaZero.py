@@ -5,7 +5,6 @@ from copy import deepcopy
 from functools import total_ordering
 from typing import List, Tuple
 
-import gym
 import mlflow
 import numpy as np
 import torch
@@ -60,16 +59,19 @@ class Node:
 
 
 class AlphaZero(nn.Module):
-    def __init__(self, input_dim: int, output_dim: int):
+    def __init__(self, input_dim: int, output_dim: int, body: nn.Module = None):
         super().__init__()
 
         # Body of the network.
-        hidden = round(input_dim / output_dim)
-        self.body = nn.Sequential(
-            nn.Dropout(0.5),
-            nn.Linear(input_dim, hidden),
-            nn.LeakyReLU(),
-        )
+        if body:
+            self.body = body
+        else:
+            hidden = round(input_dim / output_dim)
+            self.body = nn.Sequential(
+                nn.Dropout(0.5),
+                nn.Linear(input_dim, hidden),
+                nn.LeakyReLU(),
+            )
 
         # Heads of the network.
         self.actions = nn.Linear(hidden, output_dim)
@@ -80,7 +82,7 @@ class AlphaZero(nn.Module):
         self.loss_policy = nn.BCELoss()
         return
 
-    def mcts(self, state: Tensor, game: gym.Env, simulations: int = 10) -> Tuple[List[Node], float]:
+    def mcts(self, state: Tensor, game, simulations: int = 10) -> Tuple[List[Node], float]:
         # Start from current root
         policy, value = self.forward(state)
         tree = [Node(state, a, p) for a, p in enumerate(policy)]
@@ -121,7 +123,7 @@ class AlphaZero(nn.Module):
         h = self.body(x)
         return functional.softmax(self.actions(h)), functional.softmax(self.value(h))
 
-    def play(self, game: gym.Env, episodes=100, steps=200, render=False):
+    def play(self, game, episodes=100, steps=200, render=False):
         for e in range(episodes):
             state = game.reset()
             for s in range(steps):
@@ -129,7 +131,7 @@ class AlphaZero(nn.Module):
                     game.render()
 
                 if self.training:
-                    pi, z = self.mcts(state, deepcopy(game), simulations=100000)
+                    pi, z = self.mcts(state, deepcopy(game), simulations=1600)
                     policy, v = self.forward(state)
                     state, rew, done, info = game.step(max(pi).action)
 
@@ -154,8 +156,7 @@ class AlphaZero(nn.Module):
             mlflow.log_metric("Steps", s)
 
 
-def train_cartpole(model):
-    game = gym.make('CartPole-v1')
+def train_gym(model, game):
     model = model(game.observation_space.shape[0], game.action_space.n)
 
     model.train()
@@ -167,4 +168,5 @@ def train_cartpole(model):
 
 
 if __name__ == "__main__":
-    train_cartpole(AlphaZero)
+    import gym
+    train_gym(AlphaZero, gym.make('CartPole-v1'))
