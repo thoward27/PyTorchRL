@@ -65,6 +65,7 @@ class AlphaZero(nn.Module):
         # Body of the network.
         if body:
             self.body = body
+            hidden = self.body.forward(torch.randn(input_dim)).shape[0]
         else:
             hidden = round(input_dim / output_dim)
             self.body = nn.Sequential(
@@ -74,6 +75,7 @@ class AlphaZero(nn.Module):
             )
 
         # Heads of the network.
+
         self.actions = nn.Linear(hidden, output_dim)
         self.value = nn.Linear(hidden, 1)
 
