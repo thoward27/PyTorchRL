@@ -9,7 +9,7 @@ import mlflow
 import numpy as np
 import torch
 from math import log, sqrt
-from torch import nn, optim, Tensor, argmax
+from torch import nn, optim, Tensor, argmax, tanh
 from torch.nn import functional
 
 c_base = 1.0
@@ -103,12 +103,8 @@ class AlphaZero(nn.Module):
             if not done:
                 policy, value = self.forward(state)
                 node.children = [Node(state, a, p, parent=node) for a, p in enumerate(policy)]
-            # Win
-            elif simulation._elapsed_steps >= 200:
-                reward.append(1)
-            # Lose
             else:
-                reward.append(-1)
+                reward.append(rew)
 
             # Backward step
             while node.parent:
@@ -123,9 +119,9 @@ class AlphaZero(nn.Module):
         if isinstance(x, np.ndarray):
             x = torch.from_numpy(x).float()
         h = self.body(x)
-        return functional.softmax(self.actions(h)), functional.softmax(self.value(h))
+        return functional.softmax(self.actions(h), dim=0), tanh(self.value(h))
 
-    def play(self, game, episodes=100, steps=200, render=False):
+    def play(self, game, episodes=100, steps=10, render=False):
         for e in range(episodes):
             state = game.reset()
             for s in range(steps):
@@ -146,16 +142,15 @@ class AlphaZero(nn.Module):
                     self.optim.step()
 
                     # Log things
-                    mlflow.log_metric("Value", loss_value.item())
-                    mlflow.log_metric("Policy", loss_policy.item())
+                    mlflow.log_metric("Training Value Error", loss_value.item())
+                    mlflow.log_metric("Training Policy Error", loss_policy.item())
                 else:
                     pi, z = self.forward(state)
                     state, rew, done, info = game.step(argmax(pi).item())
 
+                    mlflow.log_metric("Testing reward", rew)
                 if done:
                     break
-            # Logging
-            mlflow.log_metric("Steps", s)
 
 
 def train_gym(model, game):
