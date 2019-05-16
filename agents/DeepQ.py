@@ -59,7 +59,6 @@ from collections import deque
 from functools import partial
 from random import sample, random, randrange
 
-import gym
 import mlflow
 import numpy as np
 from torch import nn, optim, from_numpy
@@ -143,6 +142,7 @@ class DeepQ(nn.Module):
 
 
 if __name__ == "__main__":
+    import gym
     game = gym.make('CartPole-v1')
     model = DeepQ(game.observation_space.shape[0], game.action_space.n)
 

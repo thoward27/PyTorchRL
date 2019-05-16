@@ -1,2 +1,2 @@
-from agents.DeepQ import DeepQ
-from agents.PolicyAgent import PolicyAgent
+from .DeepQ import DeepQ
+from .PolicyAgent import PolicyAgent
